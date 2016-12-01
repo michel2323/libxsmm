@@ -168,6 +168,14 @@
 # define LIBXSMM_PRAGMA_UNROLL
 #endif
 
+#if defined(__clang__)
+# define LIBXSMM_PRAGMA_OPTIMIZE_OFF LIBXSMM_PRAGMA(clang optimize off)
+# define LIBXSMM_PRAGMA_OPTIMIZE_ON  LIBXSMM_PRAGMA(clang optimize on)
+#else
+# define LIBXSMM_PRAGMA_OPTIMIZE_OFF
+# define LIBXSMM_PRAGMA_OPTIMIZE_ON
+#endif
+
 #if defined(_OPENMP) && (200805 <= _OPENMP) /*OpenMP 3.0*/
 # define LIBXSMM_OPENMP_COLLAPSE(N) collapse(N)
 #else
@@ -197,7 +205,7 @@
 #define LIBXSMM_ABS(A) (0 <= (A) ? (A) : -(A))
 #define LIBXSMM_MIN(A, B) ((A) < (B) ? (A) : (B))
 #define LIBXSMM_MAX(A, B) ((A) < (B) ? (B) : (A))
-#define LIBXSMM_CLMP(VALUE, LO, HI) ((LO) < (VALUE) ? ((HI) > (VALUE) ? (VALUE) : (HI)) : (LO))
+#define LIBXSMM_CLMP(VALUE, LO, HI) ((LO) < (VALUE) ? ((HI) > (VALUE) ? (VALUE) : LIBXSMM_MAX(HI, VALUE)) : LIBXSMM_MIN(LO, VALUE))
 #define LIBXSMM_MOD2(N, NPOT) ((N) & ((NPOT) - 1))
 #define LIBXSMM_MUL2(N, NPOT) ((N) << LIBXSMM_LOG2(NPOT))
 #define LIBXSMM_DIV2(N, NPOT) ((N) >> LIBXSMM_LOG2(NPOT))
@@ -437,6 +445,14 @@
 # define LIBXSMM_NO_OFFLOAD(RTYPE, FN, ...) (FN)(__VA_ARGS__)
 #endif
 #define LIBXSMM_RETARGETABLE LIBXSMM_OFFLOAD(LIBXSMM_OFFLOAD_TARGET)
+
+#if defined(LIBXSMM_OFFLOAD_TARGET)
+# pragma offload_attribute(push,target(LIBXSMM_OFFLOAD_TARGET))
+#endif
+#include <stdint.h>
+#if defined(LIBXSMM_OFFLOAD_TARGET)
+# pragma offload_attribute(pop)
+#endif
 
 #endif /*LIBXSMM_MACROS_H*/
 

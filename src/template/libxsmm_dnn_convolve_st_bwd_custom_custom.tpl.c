@@ -60,8 +60,8 @@ libxsmm_convfunction jitted_conv_bp_no_pf = (libxsmm_convfunction)handle->code_b
 #if defined(LIBXSMM_CONV_NO_PREFETCH)
 libxsmm_convfunction jitted_conv_bp_peeled_no_pf = (libxsmm_convfunction)handle->code_bwd[2].xconv.sconv;
 #else
-libxsmm_sconvfunction jitted_conv_bp_pf = (libxsmm_convfunction)handle->code_bwd[1].xconv.sconv;
-libxsmm_sconvfunction jitted_conv_bp_peeled_noweight_pf = (libxsmm_convfunction)handle->code_bwd[3].xconv.sconv;
+libxsmm_convfunction jitted_conv_bp_pf = (libxsmm_convfunction)handle->code_bwd[1].xconv.sconv;
+libxsmm_convfunction jitted_conv_bp_peeled_noweight_pf = (libxsmm_convfunction)handle->code_bwd[3].xconv.sconv;
 #endif
 
 element_input_type *l_input;
@@ -74,7 +74,9 @@ kw = handle->desc.S;
 ifh=handle->desc.H;
 ofh=handle->ofh;
 
-libxsmm_barrier_init((libxsmm_barrier*)handle->scratch2, tid);
+/* lazy barrier init */
+libxsmm_barrier_init((libxsmm_barrier*)handle->scratch2, ltid);
+
 for (ifm1ofm1 = transpose_thr_begin; ifm1ofm1 < transpose_thr_end; ++ifm1ofm1) {
   ofm1 = ifm1ofm1/handle->blocksifm;
   ifm1 = ifm1ofm1%handle->blocksifm;
@@ -91,9 +93,10 @@ for (ifm1ofm1 = transpose_thr_begin; ifm1ofm1 < transpose_thr_end; ++ifm1ofm1) {
     }
   }
 }
-libxsmm_barrier_wait((libxsmm_barrier*)handle->scratch2, tid);
+libxsmm_barrier_wait((libxsmm_barrier*)handle->scratch2, ltid);
 
-if ( libxsmm_get_target_archid() != LIBXSMM_X86_AVX2 ) {
+if ( libxsmm_get_target_archid() == LIBXSMM_X86_AVX512_MIC ||
+     libxsmm_get_target_archid() == LIBXSMM_X86_AVX512_CORE   ) {
 for (imgifm1 = thr_begin; imgifm1 < thr_end; ++imgifm1) {
   img = imgifm1/handle->blocksifm;
   ifm1 = imgifm1%handle->blocksifm;
@@ -720,7 +723,7 @@ for (imgifm1 = thr_begin; imgifm1 < thr_end; ++imgifm1) {
 #endif
   }
 }
-} else {
+} else if ( libxsmm_get_target_archid() == LIBXSMM_X86_AVX2 ){
   for (imgifm1 = thr_begin; imgifm1 < thr_end; ++imgifm1) {
     img = imgifm1/handle->blocksifm;
     ifm1 = imgifm1%handle->blocksifm;
@@ -738,4 +741,7 @@ for (imgifm1 = thr_begin; imgifm1 < thr_end; ++imgifm1) {
       }
     }
   }
+/* should never happen, this is just an additional check */
+} else {
+  status = LIBXSMM_DNN_ERR_UNSUPPORTED_ARCH;
 }

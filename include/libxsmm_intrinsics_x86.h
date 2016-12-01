@@ -31,8 +31,7 @@
 #ifndef LIBXSMM_INTRINSICS_X86_H
 #define LIBXSMM_INTRINSICS_X86_H
 
-#include <libxsmm_typedefs.h>
-#include <libxsmm_macros.h>
+#include "libxsmm_cpuid.h"
 
 #if defined(LIBXSMM_OFFLOAD_TARGET)
 # pragma offload_attribute(push,target(LIBXSMM_OFFLOAD_TARGET))
@@ -65,12 +64,16 @@
 # endif
 # if defined(__INTEL_COMPILER)
     /* TODO: compiler version check for LIBXSMM_MAX_STATIC_TARGET_ARCH */
-#   define LIBXSMM_MAX_STATIC_TARGET_ARCH LIBXSMM_X86_AVX512_CORE
+#   if 1300 <= (__INTEL_COMPILER)
+#     define LIBXSMM_MAX_STATIC_TARGET_ARCH LIBXSMM_X86_AVX512_CORE
+#   else
+#     define LIBXSMM_MAX_STATIC_TARGET_ARCH LIBXSMM_X86_AVX2
+#   endif
 #   define LIBXSMM_INTRINSICS/*no need for target flags*/
 #   include <immintrin.h>
-# elif defined(_CRAYC)
-    /* TODO: version check e.g, (LIBXSMM_VERSION2(11, 4) <= LIBXSMM_VERSION2(_RELEASE, _RELEASE_MINOR)) */
-#   define LIBXSMM_MAX_STATIC_TARGET_ARCH LIBXSMM_X86_AVX512_CORE
+# elif defined(_CRAYC) && defined(__GNUC__)
+    /* TODO: version check e.g., LIBXSMM_VERSION2(11, 5) <= LIBXSMM_VERSION2(_RELEASE, _RELEASE_MINOR) */
+#   define LIBXSMM_MAX_STATIC_TARGET_ARCH LIBXSMM_X86_AVX
 #   define LIBXSMM_INTRINSICS/*no need for target flags*/
 #   include <immintrin.h>
 # elif defined(_MSC_VER)
@@ -221,10 +224,6 @@
 
 #if !defined(LIBXSMM_MAX_STATIC_TARGET_ARCH)
 # define LIBXSMM_MAX_STATIC_TARGET_ARCH LIBXSMM_STATIC_TARGET_ARCH
-# include <xmmintrin.h>
-# if defined(__SSE3__)
-#   include <pmmintrin.h>
-# endif
 #endif
 
 /** Include basic x86 intrinsics such as __rdtsc. */
@@ -234,7 +233,14 @@
 # else
 #   include <x86intrin.h>
 # endif
+# include <xmmintrin.h>
+# if defined(__SSE3__)
+#   include <pmmintrin.h>
+# endif
 #else
+# if !defined(LIBXSMM_INTRINSICS_NONE)
+#   define LIBXSMM_INTRINSICS_NONE
+# endif
 # define LIBXSMM_INTRINSICS
 #endif
 

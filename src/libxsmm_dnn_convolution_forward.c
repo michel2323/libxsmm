@@ -29,6 +29,7 @@
 /* Alexander Heinecke (Intel Corp.), Hans Pabst (Intel Corp.)
 ******************************************************************************/
 #include "libxsmm_dnn_convolution_forward.h"
+#include <libxsmm.h>
 
 LIBXSMM_API_DEFINITION libxsmm_dnn_err_t libxsmm_dnn_convolve_st_fwd_custom_custom(libxsmm_dnn_conv_handle* handle, int start_thread, int tid)
 {
@@ -55,6 +56,11 @@ LIBXSMM_API_DEFINITION libxsmm_dnn_err_t libxsmm_dnn_convolve_st_fwd_custom_cust
     } else if (handle->datatype_in ==  LIBXSMM_DNN_DATATYPE_I8 && handle->datatype_out == LIBXSMM_DNN_DATATYPE_I16 && (handle->desc.options & LIBXSMM_DNN_CONV_OPTION_ACTIVATION_UNSIGNED) > 0 ) {
       typedef unsigned char element_input_type;
       typedef short element_output_type;
+      typedef char element_filter_type;
+# include "template/libxsmm_dnn_convolve_st_fwd_custom_custom_fallback.tpl.c"
+    } else if (handle->datatype_in ==  LIBXSMM_DNN_DATATYPE_I8 && handle->datatype_out == LIBXSMM_DNN_DATATYPE_I32 && (handle->desc.options & LIBXSMM_DNN_CONV_OPTION_ACTIVATION_UNSIGNED) > 0 ) {
+      typedef unsigned char element_input_type;
+      typedef int element_output_type;
       typedef char element_filter_type;
 # include "template/libxsmm_dnn_convolve_st_fwd_custom_custom_fallback.tpl.c"
     } else {
@@ -136,6 +142,33 @@ LIBXSMM_API_DEFINITION libxsmm_dnn_err_t libxsmm_dnn_convolve_st_fwd_custom_cust
         typedef short element_output_type;
         typedef char element_filter_type;
         typedef libxsmm_busconvfunction libxsmm_convfunction;
+        if (handle->desc.u == 1 && handle->desc.v == 1) {
+#define LIBXSMM_DNN_CONV_FWD_INTERNAL_STRIDE_ONE
+# include "template/libxsmm_dnn_convolve_st_fwd_custom_custom_img_par.tpl.c"
+#undef LIBXSMM_DNN_CONV_FWD_INTERNAL_STRIDE_ONE
+        } else {
+# include "template/libxsmm_dnn_convolve_st_fwd_custom_custom_img_par.tpl.c"
+        }
+      }
+    } else if (handle->datatype_in == LIBXSMM_DNN_DATATYPE_I8 && handle->datatype_out == LIBXSMM_DNN_DATATYPE_I32 && (handle->desc.options & LIBXSMM_DNN_CONV_OPTION_ACTIVATION_UNSIGNED) > 0 ) {
+      if (handle->desc.N*handle->blocksofm >= handle->desc.threads) {
+        typedef unsigned char element_input_type;
+        typedef int element_output_type;
+        typedef char element_filter_type;
+        typedef libxsmm_budconvfunction libxsmm_convfunction;
+        if (handle->desc.u == 1 && handle->desc.v == 1) {
+#define LIBXSMM_DNN_CONV_FWD_INTERNAL_STRIDE_ONE
+# include "template/libxsmm_dnn_convolve_st_fwd_custom_custom.tpl.c"
+#undef LIBXSMM_DNN_CONV_FWD_INTERNAL_STRIDE_ONE
+        } else {
+# include "template/libxsmm_dnn_convolve_st_fwd_custom_custom.tpl.c"
+        }
+      }
+      else {
+        typedef unsigned char element_input_type;
+        typedef int element_output_type;
+        typedef char element_filter_type;
+        typedef libxsmm_budconvfunction libxsmm_convfunction;
         if (handle->desc.u == 1 && handle->desc.v == 1) {
 #define LIBXSMM_DNN_CONV_FWD_INTERNAL_STRIDE_ONE
 # include "template/libxsmm_dnn_convolve_st_fwd_custom_custom_img_par.tpl.c"
