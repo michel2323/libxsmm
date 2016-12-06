@@ -875,5 +875,229 @@ void stream_update_var_helmholtz_no_h2( const double* i_g1,
     for ( ; l_n < i_length;  l_n++ ) {
       io_c[l_n] =   i_h1[l_n]*(i_g1[l_n]*i_tm1[l_n] + i_g2[l_n]*i_tm2[l_n] + i_g3[l_n]*i_tm3[l_n]);
     }
+
+
   }
 }
+
+
+LIBXSMM_API
+void stream_sum_var_helmholtz_no_h2( const double* i_tm1,
+                          const double* i_tm2,
+                          const double* i_tm3,
+                          double*       io_c,
+                          const double* i_h1,
+                          const int     i_length) {
+  int l_n = 0;
+  int l_trip_prolog = 0;
+  int l_trip_stream = 0;
+
+  /* init the trip counts */
+  stream_init( i_length, (size_t)io_c, &l_trip_prolog, &l_trip_stream );
+
+  /* run the prologue */
+/*
+#if !defined(__SSE3__)
+*/
+  {
+    for ( ; l_n < l_trip_prolog;  l_n++ ) {
+      io_c[l_n] =   i_h1[l_n]*(i_tm1[l_n] + i_tm2[l_n] + i_tm3[l_n]);}
+  }
+
+  /* run the bulk, hopefully using streaming stores */
+#if defined(__SSE3__) && defined(__AVX__) && !defined(__AVX512F__)
+  {
+    /* we need manual unrolling as the compiler otherwise generates
+       too many dependencies */
+    for ( ; l_n < l_trip_stream;  l_n+=8 ) {
+      __m256d vec_tm1_1, vec_tm2_1, vec_tm3_1, vec_h1_1;
+      __m256d vec_tm1_2, vec_tm2_2, vec_tm3_2, vec_h1_2;
+
+      vec_tm1_1 = _mm256_loadu_pd(&(i_tm1[l_n]));
+      vec_tm2_1 = _mm256_loadu_pd(&(i_tm2[l_n]));
+      vec_tm1_1 = _mm256_add_pd(vec_tm2_1, vec_tm1_1);
+
+      vec_tm1_2 = _mm256_loadu_pd(&(i_tm1[l_n+4]));
+      vec_tm2_2 = _mm256_loadu_pd(&(i_tm2[l_n+4]));
+      vec_tm1_2 = _mm256_add_pd(vec_tm2_2, vec_tm1_2);
+      
+      vec_tm3_1 = _mm256_loadu_pd(&(i_tm3[l_n]));
+      vec_tm1_1 = _mm256_add_pd(vec_tm3_1, vec_tm1_1);
+      vec_tm3_2 = _mm256_loadu_pd(&(i_tm3[l_n+4]));
+      vec_tm1_2 = _mm256_add_pd(vec_tm3_2, vec_tm1_2);
+
+      vec_h1_1 = _mm256_loadu_pd(&(i_h1[l_n]));
+      vec_h1_2 = _mm256_loadu_pd(&(i_h1[l_n+4]));
+#ifdef DISABLE_NONTEMPORAL_STORES
+      _mm256_store_pd(  &(io_c[l_n]),   _mm256_mul_pd( vec_h1_1, vec_tm1_1 ) );
+      _mm256_store_pd(  &(io_c[l_n+4]), _mm256_mul_pd( vec_h1_2, vec_tm1_2 ) );
+#else
+      _mm256_stream_pd( &(io_c[l_n]),   _mm256_mul_pd( vec_h1_1, vec_tm1_1 ) );
+      _mm256_stream_pd( &(io_c[l_n+4]), _mm256_mul_pd( vec_h1_2, vec_tm1_2 ) );
+#endif
+    }
+  }
+#elif defined(__SSE3__) && defined(__AVX__) && defined(__AVX512F__)
+  {
+    for ( ; l_n < l_trip_stream;  l_n+=8 ) {
+      __m512d vec_tm1, vec_tm2, vec_tm3, vec_h1;
+     
+      vec_tm1 = _mm512_loadu_pd(&(i_tm1[l_n]));
+      vec_tm2 = _mm512_loadu_pd(&(i_tm2[l_n]));
+      vec_tm1 = _mm512_add_pd(vec_tm2, vec_tm1);
+      vec_tm3 = _mm512_loadu_pd(&(i_tm3[l_n]));
+      vec_tm1 = _mm512_add_pd(vec_tm3, vec_tm1);
+      vec_h1 = _mm512_loadu_pd(&(i_h1[l_n]));
+#ifdef DISABLE_NONTEMPORAL_STORES
+      _mm512_store_pd(  &(io_c[l_n]), _mm512_mul_pd( vec_tm1, vec_h1 ) );
+#else
+      _mm512_stream_pd( &(io_c[l_n]), _mm512_mul_pd( vec_tm1, vec_h1 ) );
+#endif
+    }
+  }
+#else
+  for ( ; l_n < l_trip_stream;  l_n++ ) {
+    io_c[l_n] =   i_h1[l_n]*(i_tm1[l_n] + i_tm2[l_n] +i_tm3[l_n]);
+  }
+#endif
+  /* run the epilogue */
+/*
+#if !defined(__SSE3__)
+*/
+  {
+    for ( ; l_n < i_length;  l_n++ ) {
+      io_c[l_n] =   i_h1[l_n]*(i_tm1[l_n] + i_tm2[l_n] + i_tm3[l_n]);
+    }
+  }
+}
+
+LIBXSMM_API
+void stream_sum_var_helmholtz(    const double* i_tm1,
+                                  const double* i_tm2,
+                                  const double* i_tm3,
+                                  const double* i_a,
+                                  const double* i_b,
+                                  double*       io_c,
+                                  const double* i_h1,
+                                  const double* i_h2,
+                                  const int     i_length) {
+  int l_n = 0;
+  int l_trip_prolog = 0;
+  int l_trip_stream = 0;
+
+  /* init the trip counts */
+  stream_init( i_length, (size_t)io_c, &l_trip_prolog, &l_trip_stream );
+
+  /* run the prologue */
+/*
+#if !defined(__SSE3__)
+*/
+  {
+    for ( ; l_n < l_trip_prolog;  l_n++ ) {
+      io_c[l_n] =   i_h1[l_n]*(i_tm1[l_n] + i_tm2[l_n] +i_tm3[l_n])
+                  + i_h2[l_n]*(i_b[l_n]*i_a[l_n]);
+    }
+  }
+ /* run the bulk, hopefully using streaming stores */
+#if defined(__SSE3__) && defined(__AVX__) && !defined(__AVX512F__)
+  {
+    /* we need manual unrolling as the compiler otherwise generates
+       too many dependencies */
+    for ( ; l_n < l_trip_stream;  l_n+=8 ) {
+      __m256d vec_tm1_1, vec_tm2_1, vec_tm3_1, vec_a_1, vec_b_1, vec_h1_1, vec_h2_1;
+      __m256d vec_tm1_2, vec_tm2_2, vec_tm3_2, vec_a_2, vec_b_2, vec_h1_2, vec_h2_2;
+
+      
+     
+      vec_tm1_1 = _mm256_loadu_pd(&(i_tm1[l_n]));
+      vec_tm2_1 = _mm256_loadu_pd(&(i_tm2[l_n]));
+      vec_tm1_1 = _mm256_add_pd(vec_tm2_1, vec_tm1_1);
+
+      vec_tm1_2 = _mm256_loadu_pd(&(i_tm1[l_n+4]));
+      vec_tm2_2 = _mm256_loadu_pd(&(i_tm2[l_n+4]));
+      vec_tm1_2 = _mm256_add_pd(vec_tm2_2, vec_tm1_2);
+      
+      vec_tm3_1 = _mm256_loadu_pd(&(i_tm3[l_n]));
+      vec_tm1_1 = _mm256_add_pd(vec_tm3_1, vec_tm1_1);
+      vec_tm3_2 = _mm256_loadu_pd(&(i_tm3[l_n+4]));
+      vec_tm1_2 = _mm256_add_pd(vec_tm3_2, vec_tm1_2);
+
+      vec_a_1 = _mm256_loadu_pd(&(i_a[l_n]));
+      vec_a_2 = _mm256_loadu_pd(&(i_a[l_n+4]));
+
+      vec_b_1 = _mm256_loadu_pd(&(i_b[l_n]));
+      vec_a_1 = _mm256_mul_pd(vec_a_1, vec_b_1);
+      vec_b_2 = _mm256_loadu_pd(&(i_b[l_n+4]));
+      vec_a_2 = _mm256_mul_pd(vec_a_2, vec_b_2);
+
+      vec_h2_1 = _mm256_loadu_pd(&(i_h2[l_n]));
+      vec_a_1 = _mm256_mul_pd(vec_a_1, vec_h2_1);
+      vec_h2_2 = _mm256_loadu_pd(&(i_h2[l_n+4]));
+      vec_a_2 = _mm256_mul_pd(vec_a_2, vec_h2_2);
+
+      vec_h1_1 = _mm256_loadu_pd(&(i_h1[l_n]));
+      vec_tm1_1 = _mm256_mul_pd(vec_tm1_1, vec_h1_1);
+
+#ifdef DISABLE_NONTEMPORAL_STORES
+      _mm256_store_pd(  &(io_c[l_n]), _mm256_add_pd( vec_tm1_1, vec_a_1 ) );
+#else
+      _mm256_stream_pd( &(io_c[l_n]), _mm256_add_pd( vec_tm1_1, vec_a_1 ) );
+#endif
+
+      vec_h1_2 = _mm256_loadu_pd(&(i_h1[l_n+4]));
+      vec_tm1_2 = _mm256_mul_pd(vec_tm1_2, vec_h1_2);
+
+#ifdef DISABLE_NONTEMPORAL_STORES
+      _mm256_store_pd(  &(io_c[l_n+4]), _mm256_add_pd( vec_tm1_2, vec_a_2 ) );
+#else
+      _mm256_stream_pd( &(io_c[l_n+4]), _mm256_add_pd( vec_tm1_2, vec_a_2 ) );
+#endif
+    }
+  }
+#elif defined(__SSE3__) && defined(__AVX__) && defined(__AVX512F__)
+  {
+    for ( ; l_n < l_trip_stream;  l_n+=8 ) {
+      __m512d vec_g1, vec_g2, vec_g3, vec_tm1, vec_tm2, vec_tm3, vec_a, vec_b, vec_h1, vec_h2;
+   
+      vec_tm1 = _mm512_loadu_pd(&(i_tm1[l_n]));
+      vec_tm2 = _mm512_loadu_pd(&(i_tm2[l_n]));
+      vec_tm1 = _mm512_add_pd(vec_tm1, vec_tm2);
+     
+      vec_tm3 = _mm512_loadu_pd(&(i_tm3[l_n]));
+      vec_tm1 = _mm512_add_pd(vec_tm1, vec_tm3);
+
+      vec_a = _mm512_loadu_pd(&(i_a[l_n]));
+      vec_b = _mm512_loadu_pd(&(i_b[l_n]));
+      vec_a = _mm512_mul_pd(vec_a, vec_b);
+      vec_h2 = _mm512_loadu_pd(&(i_h2[l_n]));
+      vec_a = _mm512_mul_pd(vec_a, vec_h2);
+
+      vec_h1 = _mm512_loadu_pd(&(i_h1[l_n]));
+      vec_tm1 = _mm512_mul_pd(vec_tm1, vec_h1);
+
+#ifdef DISABLE_NONTEMPORAL_STORES
+      _mm512_store_pd(  &(io_c[l_n]), _mm512_add_pd( vec_tm1, vec_a ) );
+#else
+      _mm512_stream_pd( &(io_c[l_n]), _mm512_add_pd( vec_tm1, vec_a ) );
+#endif
+    }
+  }
+#else
+  for ( ; l_n < l_trip_stream;  l_n++ ) {
+    io_c[l_n] =   i_h1[l_n]*(i_tm1[l_n] +i_tm2[l_n] + i_tm3[l_n])
+                + i_h2[l_n]*(i_b[l_n]*i_a[l_n]);
+  }
+#endif
+  /* run the epilogue */
+/*
+#if !defined(__SSE3__)
+*/
+  {
+    for ( ; l_n < i_length;  l_n++ ) {
+      io_c[l_n] =   i_h1[l_n]*(i_tm1[l_n] +i_tm2[l_n] + i_tm3[l_n])
+                  + i_h2[l_n]*(i_b[l_n]*i_a[l_n]);
+    }
+  }
+}
+
+
